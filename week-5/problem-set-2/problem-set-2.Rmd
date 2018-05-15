@@ -1,6 +1,7 @@
 ---
-  output: 
-  html_document: 
+  title: "Stats 412 Problem Set 2"
+  author: "Lucy Baden"
+  output: html_document
   highlight: pygments
 ---
 
@@ -11,25 +12,113 @@
 
 ```{r}
 library(foreign)
+library(MASS)
+library(visreg)
 rb <- read.dta("http://www.stat.columbia.edu/~gelman/arm/examples/risky.behavior/risky_behaviors.dta", convert.factors=TRUE)
 ```
 
 
 ### 1
 **Estimate**: Model this outcome as a function of treatment assignment using a Poisson regression. Does the model fit well? Is there evidence of overdispersion?
+
+```{r Ex1a}
+rb$fupacts <- round(rb$fupacts)
+
+treatment <- NA
+control_ind <- which(rb$women_alone == 0 & rb$couples == 0)
+couple_ind <- which(rb$women_alone == 0 & rb$couples == 1)
+women_ind <- which(rb$women_alone == 1 & rb$couples == 0)
+treatment[control_ind] <- "control"
+treatment[couple_ind] <- "couple"
+treatment[women_ind] <- "women"
+
+rb$treatment <- treatment
+
+fit <- glm(fupacts~treatment, data=rb, family=poisson)
+summary(fit)
+
+
+```
+
+  The model does not appear to fit well, as the AIC is very high at 14256 However, treatment assignment is significant in the model. 
+  
+  To check for overdispersion, we can examine the difference between the residual deviance and its degrees of freedom. In a well-fitted model, these values should be close to equal. However, here the residual deviance is 12925, much higher than its degrees of freedom, 431. This provides evidence of overdispersion in the model.
+ 
  
 ### 2
 **Estimate Extension**: Extend the model to include pre-treatment measures of the outcome and the additional pre-treatment variables included in the dataset. Does the model fit well? Is there evidence of overdispersion?
+
+```{r Ex2a}
+
+fit.2 <- glm(fupacts~treatment+bupacts+bs_hiv+sex, data=rb, family=poisson)
+summary(fit.2)
+
+```
+
+  This model fits better than the previous Poisson model in problem 1, with a lower AIC of 11537. Also, all of the predictors are significant in the model. However, there is evidence of overdispersion. The residual deviance is 10200, which is much higher than the residual deviance degrees of freedom, which is 428. This implies that there is more variability around the model's fitted values than is consistent with the Poisson distribution.
+
+  
   
 ### 3
   **Overdispersion**: Fit an overdispersed (quasi-)Poisson model. Fit a negative binomial model. Compare the models to previous two you have fit. Finally, what do you conclude regarding effectiveness of the intervention?
   
+```{r Ex3a}
+fit.qp <- glm(fupacts~treatment+bupacts+bs_hiv+sex, data=rb, family=quasipoisson)
+summary(fit.qp)
+
+fit.nb <- glm.nb(fupacts~treatment+bupacts+bs_hiv+sex, data=rb)
+summary(fit.nb)
+
+AIC(fit)
+AIC(fit.2)
+AIC(fit.qp)
+AIC(fit.nb)
+```
+
+We can compare the models using AIC, except for the quasi-Poisson model where it can't be calculated. The negative binomial model has a dramatic AIC improvement over the previous two Poisson models, with an AIC of 2969.7. It therefore provides a much better fit.
+
+In both the negative binomial model and the quasi-Poisson model, the predictor sex is no longer significant.
+
+In the quasi-Poisson model, we can see that the dispersion parameter is taken to be 30. The residual deviance is still 10200 for this model, much bigger than the 428 degrees of freedom, indicating that the model is still overdispersed. In comparison, the negative binomial model is much improved. It has a residual deviance of 487.67 and 428 residual deviance degrees of freedom.
+
+
+
 ### 4
   **Hurdle Model?**: Fit a hurdle model to this data. This is a classic data set for Poisson regression and overdispersion...i'm honestly curious if the hurdle model makes sense and improves over any of the other previous models you have built. Also compare rootograms for all. 
+  
+```{r Ex4a}
+library(pscl)
+fit.hurdle <- hurdle(fupacts ~ treatment+bupacts+bs_hiv+sex, data = rb)
+summary(fit.hurdle)
+AIC(fit.hurdle)
+
+```
+
+The hurdle model does seem to fit better than the two Poisson models, with an AIC of 8179.8, but it does not fit better than the negative binomial model.
+
+We can also compare rootograms for all of the models except the quasi-Poisson model, which is not supported.
+
+```{r Ex4b}
+library(countreg)
+rootogram(fit, max = 80)
+rootogram(fit.2, max = 80)
+rootogram(fit.nb, max = 80)
+rootogram(fit.hurdle, max = 80)
+```
+
+In the first Poisson model, we can see that the model is dramatically under-fitting for the first few counts, particularly the number of zeros. It then overfits from around 10 to 25, before continuing to underfit for higher counts. The second Poisson model shows a similar pattern, with severe under-fitting at 0, and then rapidly beginning to overfit instead around 5. This second Poisson model continues to overfit for longer, but higher values still under-fit as well.
+
+The negative binomial model is much better by contrast. It still under- and overfits at times, but by much less, and rarely, without any pronounced pattern to when it under-fits or overfits.
+
+The hurdle model perfectly fits the number of zeros by design, but afterwards shows many of the flaws of the Poisson models. It dramatically under-fits counts until around 10, and then begins to overfit more and more until peaking around 20. The higher values under-fit as well.
+
+Overall, it seems that the negative binomial model performs significantly better than the other models.
 
 
 ### 5
 **Assumptions**: These data include responses from both men and women from the participating couples. Does this give you any concern?
+
+Yes, this does concern me, because responses from people in the same couple may not be independent, which would break our model's assumptions. 
 
 
   * * *
@@ -38,9 +127,9 @@ rb <- read.dta("http://www.stat.columbia.edu/~gelman/arm/examples/risky.behavior
 
 The two `.Rdata` files under week 4 come as an abbreviated version of punch profiles from a boxing system to measure acceleration of boxers during live fights. The `profiles` list from the first file below has each individual punch profile which has a list item being a 3 column data frame of time (in ms around the middle of the punch event), acceleration in x (forward-back in g's), and acceleration in y (side-to-side in g's). Also attached are some other fields which are of less importance and contribute to this being a somewhat messy data set.
 
-```{r two, eval = FALSE}
-load(file = 'week-4/punch_profiles.Rdata')
-load(file = 'week-4/punch_types.Rdata')
+```{r load}
+load('punch_profiles.Rdata')
+load('punch_types.Rdata')
 ```
 
 There are 2135 labeled punch profiles each with a labeled punch type. Use the `punch_types` data frame as ground truth for punch type (labeled 1-6) in addition to the boxers stance (orthodox or southpaw), and punching head (right or left). The punch types are below.
@@ -59,13 +148,143 @@ There are 2135 labeled punch profiles each with a labeled punch type. Use the `p
 ### 6
 **Features**: Create at least 10 new features from the punch profiles. They can be combinations of x and y acceleration or individually from either. Explain how these features have been constructed.
 
+```{r Ex6}
+dat <- profiles
+
+xmean <- c()
+xmedian <- c()
+xquantile25 <- c()
+xquantile75 <- c()
+xmax <- c()
+xmin <- c()
+xdif <- c()
+
+xslope <- c()
+
+ymean <- c()
+ymedian <- c()
+yquantile25 <- c()
+yquantile75 <- c()
+ymax <- c()
+ymin <- c()
+ydif <- c()
+
+meandist <- c()
+
+post_punch_xmin <- c()
+pre_punch_xmin <- c()
+
+time_to_hit <- c()
+total_ptime <- c()
+
+
+for (i in 1:length(dat)) {
+  time <- dat[[i]]$profile[,1]
+  x <- dat[[i]]$profile[,2]
+  y <- dat[[i]]$profile[,3]
+
+  xmean[i] <- mean(x)
+  xmedian[i] <- median(x)
+  xquantile25[i] <- quantile(x)[2]
+  xquantile75[i] <- quantile(x)[4]
+  xmax[i] <- max(x)
+  xmin[i] <- min(x)
+  xdif[i] <- max(x) - min(x)
+  
+  time_p <- time[which(abs(time) <= 200)]
+  x_p <- x[which(abs(time) <= 200)]
+  y_p <- y[which(abs(time) <= 200)]
+  
+  time_max <- time_p[which(x_p == max(x_p))][1]
+  time_min <- time_p[which(x_p == min(x_p))][1]
+
+
+  ymean[i] <- mean(y)
+  ymedian[i] <- median(y)
+  yquantile25[i] <- quantile(y)[2]
+  yquantile75[i] <- quantile(y)[4]
+  ymax[i] <- max(y)
+  ymin[i] <- min(y)
+  ydif[i] <- max(y) - min(y)
+  
+  meandist[i] <- mean(sqrt(x^2 + y^2))
+  
+  pre_punch_xmin[i] <- min(x_p[which(time_p < 0)])[1]
+  pre_punch_time <- time_p[which(x_p == pre_punch_xmin[i])[1]]
+  
+
+  post_punch_xmin[i] <- min(x_p[which(time_p > 0)])[1]
+  post_punch_time <- time_p[which(x_p == post_punch_xmin[i])[1]]
+  
+  xslope[i] <- (max(x_p) - pre_punch_xmin[i]) / abs(pre_punch_time - time_max)
+
+  
+  time_to_hit[i] <- abs(time_min - time_max)
+  total_ptime[i] <- (post_punch_time - time_max) + time_to_hit[i]
+
+  
+}
+
+
+df <- cbind(xmean, xmedian, xquantile25, xquantile75, xmax, xmin, xdif, xslope,
+      ymean, ymedian, yquantile25, yquantile75, ymax, ymin, ydif,
+      meandist, pre_punch_xmin, post_punch_xmin, time_to_hit, total_ptime)
+
+
+punch <- cbind(punch_types, df)
+punch$box_names <- NULL
+
+```
+
+To create the features, I made an empty vector for each feature and then ran a loop over the list of punch profiles. In each iteration of the loop, I calculated the new features from that punch profile and added them to their respective vectors. When the loop ended, I merged the vectors into a data frame along with punch_types.
+
+The features include the minimum and maximum value of x and y over the entire time frame, along with their mean, median, and 25\% and 75\% quantile values. I calculated the difference between the maximum and minimum x and y values as well. I also found the mean distance between x and y. I defined the beginning of the punch as the time of the minimum x value between -200 and 0,  and the end of the punch as the time of the minimum x value greater than 0 and less than 200. I then found the time until the hit, defined as the time from the beginning of the punch until time of the maximum x value between -200 and 200. I calculated the total punch time as the time between the beginning and end of the punch. I also included the x value as the beginning of the punch and end of the punch as features (pre_punch_xmin and post_punch_xmin). Finally, I found the slope of the x acceleration between the beginning of the punch and the time of the hit (the time of the maximum x value between -200 and 200).
+
+
+
 ### 7
 **Multinomial Model** Fit a multinomial model to estimate each of the punch types. Which of the punch types have the most difficulty in being separated?
+
+```{r Ex7a}
+library(nnet)
+fit.mn <- multinom(pt~., trace=FALSE, data = punch)
+summary(fit.mn)
+```
+
+Below, we can see the actual punch types vs the model's predictions, as well as a confusion matrix. 
+
+```{r Ex7b}
+preds <- predict(fit.mn, punch)
+summary(punch$pt)
+summary(preds)
+
+library(caret)
+confusionMatrix(preds, punch$pt)
+```
+We can see that the model has a hard time separating #4, upper cuts, and instead mostly predicts #2, hooks, or occasionally #3, jabs. This makes sense, since the data has few upper cuts compared to the other punch types. The model also incorrectly predicts 126 hooks as jabs, and vice versa. Occasionally the model predicts hooks as #1, crosses, and crosses as hooks as well. The overall accuracy was 79.58%.  
+
 
 ### 8
 **Logistic Regression** Consider bucketing the punches into two groups (straights and hooks). Are you able to improve accuracy in any way?
 
+```{r Ex8a}
+# straights are 1, hooks are 0
+punch$pt <- as.factor(ifelse(punch$pt == 1 | punch$pt == 3, 1, 0))
 
+fit.glm <- glm(pt~., data = punch, family=binomial)
+summary(fit.glm)
+```
 
+Below, we can see the actual punch types vs the model's predictions, as well as a confusion matrix. 
 
+```{r Ex8b}
+preds <- predict(fit.glm, punch, type="response")
+summary(punch$pt)
+summary(round(preds))
+
+library(caret)
+confusionMatrix(as.factor(round(preds)), punch$pt)
+```
+
+Bucketing the punches into two groups and using logistic regression, the accuracy improves to 84.54%. However, 210 hooks are predicted to be straights, and 120 straights are predicted to be hooks.
 
